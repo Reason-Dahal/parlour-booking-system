@@ -12,7 +12,7 @@ appointments.
 | Phase | Name | Status |
 |---|---|---|
 | 1 | Planning and Requirements Gathering | Complete |
-| 2 | System Analysis | In progress |
+| 2 | System Analysis | Complete. Use case specifications outstanding |
 | 3 | System Design | Not started |
 | 4 | Implementation | Not started |
 | 5 | Testing | Not started |
