@@ -3,7 +3,7 @@
 **Project:** Parlour Booking System
 **Phase:** 1, Planning and Requirements Gathering
 **Document status:** Approved, pending external operator validation
-**Version:** 1.0
+**Version:** 1.1
 **Last updated:** 31 July 2026
 
 This document consolidates the Phase 1 specification with Addendum I
@@ -298,6 +298,13 @@ This module is the functional core of the system.
 | FR-032 | The system shall allow an Owner or Staff member to create an appointment on a customer's behalf, supporting telephone and walk-in bookings. |
 | FR-033 | The system shall allow an Owner or Staff member to transition an appointment to COMPLETED or NO_SHOW after its scheduled end time. |
 | FR-034 | The system shall maintain an immutable audit record of every appointment status transition, capturing the acting user and timestamp. |
+| FR-061 | The system shall automatically transition a PENDING appointment to CANCELLED if it has not been approved or declined within a configurable expiry period. |
+
+FR-061 exists because a PENDING appointment holds its slot in the
+availability computation, per OPD-08. Without automatic expiry, an owner who
+does not act on a request freezes that slot indefinitely, invisibly to
+customers and with no error raised anywhere. Enabling approval without expiry
+produces a system that silently degrades toward permanent unavailability.
 
 ### 6.5 Module E: Notifications
 

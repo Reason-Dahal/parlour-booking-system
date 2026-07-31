@@ -2,8 +2,8 @@
 
 **Project:** Parlour Booking System
 **Phase:** 2, System Analysis
-**Document status:** In progress. Awaiting resolution of OPD-08 to OPD-10
-**Version:** 0.9
+**Document status:** Approved. All open decisions resolved
+**Version:** 1.0
 **Last updated:** 31 July 2026
 
 ---
@@ -53,7 +53,7 @@ artifact in this document would remain valid.
 | ACT-03 | Staff Member | Exactly one tenant | Required | Per OPD-04 |
 | ACT-04 | Owner | Exactly one tenant | Required | Capability superset of ACT-03 within own tenant |
 | ACT-05 | Platform Administrator | All tenants | Required | Operator of the platform |
-| ACT-06 | Scheduler | System internal | Not applicable | Time-triggered actor for reminder dispatch |
+| ACT-06 | Scheduler | System internal | Not applicable | Time-triggered actor for reminder dispatch and pending appointment expiry |
 
 ACT-06 is a legitimate actor because a time-triggered process initiates
 behaviour without human input. FR-037 requires reminders at a configurable
@@ -130,6 +130,7 @@ S6   Reporting and Notification
 |    UC-33  Dispatch transactional notification          |
 |    UC-34  Dispatch appointment reminder                |
 |    UC-35  View operational report                      |
+|    UC-36  Expire unapproved pending appointment        |
 |                                                        |
 +--------------------------------------------------------+
 ```
@@ -146,7 +147,7 @@ Owner ................ all Staff use cases, plus UC-07 to UC-11,
                        UC-14, UC-15, UC-16, UC-18, UC-19, UC-22,
                        UC-32, UC-35
 Platform Admin ....... UC-05, UC-06, UC-13
-Scheduler ............ UC-34
+Scheduler ............ UC-34, UC-36
 ```
 
 ### 2.4 Use case relationships
@@ -557,6 +558,31 @@ a join, and it makes the row-level security policy trivial to express. Accept
 a small amount of redundancy in exchange for a security invariant that holds
 without exception.
 
+### 6.3 BOOKING_POLICY
+
+Exactly one record per tenant. Every value is an owner-adjustable default.
+None is hardcoded anywhere in the application.
+
+| Attribute | Type | Default | Constraints | Source |
+|---|---|---|---|---|
+| id | Identifier | | Primary key | |
+| tenantId | Identifier | | Not null, unique, foreign key | |
+| requiresApproval | Boolean | `false` | Not null | OPD-08 |
+| pendingExpiryHours | Integer | 24 | Not null, greater than zero | FR-061 |
+| slotGranularityMinutes | Integer | 15 | Not null, one of {5, 10, 15, 20, 30, 60} | OPD-09 |
+| minAdvanceNoticeHours | Integer | 2 | Not null, zero or greater | FR-024 |
+| maxBookingHorizonDays | Integer | 60 | Not null, greater than zero | FR-025 |
+| cancellationCutoffHours | Integer | 4 | Not null, zero or greater | FR-030 |
+
+`slotGranularityMinutes` is constrained to a fixed set rather than accepted as
+an arbitrary integer. Values such as 7 or 13 produce slot grids that align to
+no recognisable clock pattern and are unusable in practice. Every permitted
+value divides 60 evenly, so slot boundaries align within each hour.
+
+That alignment is alignment in **local** time. In UTC, a Kathmandu tenant's
+slots fall on quarter-hour boundaries offset from the hour, because Nepal
+Standard Time is UTC+05:45. This is expected and correct. See section 8.1.
+
 ---
 
 ## 7. Appointment Lifecycle State Model
@@ -568,6 +594,7 @@ stateDiagram-v2
 
     PENDING --> CONFIRMED : approved by staff
     PENDING --> CANCELLED : declined or cancelled
+    PENDING --> CANCELLED : expired, not approved in time
 
     CONFIRMED --> CANCELLED : cancelled within policy
     CONFIRMED --> COMPLETED : service delivered
@@ -584,6 +611,7 @@ stateDiagram-v2
 |---|---|---|---|
 | PENDING | CONFIRMED | Staff, Owner | None |
 | PENDING | CANCELLED | Customer, Staff, Owner | None |
+| PENDING | CANCELLED | Scheduler | Now is after creation plus `pendingExpiryHours` |
 | CONFIRMED | CANCELLED | Customer | Now is before start minus cancellation cutoff |
 | CONFIRMED | CANCELLED | Staff, Owner | None |
 | CONFIRMED | COMPLETED | Staff, Owner | Now is after `endAt` |
@@ -592,6 +620,27 @@ stateDiagram-v2
 CANCELLED, COMPLETED and NO_SHOW are terminal. No transition leaves them. Per
 NFR-010 no appointment is ever physically deleted, so a terminal state is the
 end of the record's lifecycle but not the end of its existence.
+
+### 7.1.1 Why the expiry transition is mandatory
+
+Per OPD-08, a PENDING appointment occupies time in the availability
+computation. This is necessary: without it, approval would be meaningless,
+because a second customer could book the same slot while the first awaits a
+decision.
+
+That necessity creates a failure mode. If a PENDING appointment holds its
+slot and the owner never acts on it, the slot is frozen indefinitely. It is
+invisible to other customers, it raises no error, and it produces no
+dashboard signal. An owner who does not open the dashboard for a week would
+find every requested slot blocked while their calendar appeared empty.
+
+The failure presents to the operator as "customers say they cannot book but I
+have no appointments", which is very difficult to diagnose from that
+description.
+
+The Scheduler transition is what closes this. It is not an optimisation and
+it is not deferrable: enabling `requiresApproval` without it produces a
+system that silently degrades toward permanent unavailability.
 
 ### 7.2 Rescheduling is deliberately absent from this diagram
 
@@ -731,13 +780,14 @@ the DRY principle applied to specification rather than to code.
 | BR-11 | An appointment shall fall within the tenant's booking horizon at the time of creation. |
 | BR-12 | Price, duration and buffer shall be frozen at the values effective when the appointment was created. |
 | BR-13 | Every appointment status transition shall produce an immutable event record naming the acting user. |
-| BR-14 | Where a customer selects "any available staff", assignment shall be deterministic. The qualified, available staff member with the fewest confirmed appointments on the target date is selected. Ties resolve by lowest staff identifier. |
+| BR-14 | Where a customer selects "any available staff", assignment shall be deterministic. The qualified, available staff member with the fewest active appointments on the target date is selected, where active means PENDING or CONFIRMED. Ties resolve by lowest staff identifier. |
 | BR-15 | A customer shall not hold two confirmed appointments with overlapping intervals within the same tenant. |
 | BR-16 | A user shall never read or write data belonging to a tenant with which they hold no membership or customer profile. |
 | BR-17 | A tenant shall never observe that a customer holds a relationship with any other tenant. |
 | BR-18 | A category shall be global and shall not be modifiable by any tenant. |
 | BR-19 | All persisted timestamps shall be UTC. Local time shall be derived at presentation using the tenant timezone. |
 | BR-20 | Notification dispatch failure shall never cause a booking transaction to fail or roll back. |
+| BR-21 | A PENDING appointment shall hold its slot until it is approved, declined or expired. Expiry occurs automatically after the tenant's configured `pendingExpiryHours`. |
 
 **BR-14** resolves a question the specification left implicit. "Any available
 staff" must produce a deterministic assignment, or two identical requests
@@ -778,6 +828,7 @@ verifies FR-027" in Phase 5 and "what breaks if I change this" in Phase 6.
 | FR-038 | UC-33, UC-34 | NotificationOutbox | BR-20 |
 | FR-051 | UC-25 | User, CustomerProfile | BR-16 |
 | FR-052 | UC-25, UC-35 | CustomerProfile | BR-17 |
+| FR-061 | UC-36 | Appointment, AppointmentEvent, BookingPolicy | BR-13, BR-21 |
 
 Any requirement tracing to no use case is either unimplementable or was never
 a requirement. Any use case tracing to no requirement is scope creep. Running
@@ -786,13 +837,31 @@ this phase.
 
 ---
 
-## 11. Open Decisions
+## 11. Resolved Decisions
 
-| ID | Question | Recommendation |
+All open decision points arising from this phase are closed. Full rationale,
+including options considered and rejected, is recorded in
+[DECISION-LOG.md](../DECISION-LOG.md).
+
+| ID | Question | Resolution |
 |---|---|---|
-| OPD-08 | Does an online booking become CONFIRMED automatically, or enter PENDING awaiting staff approval? | Per-tenant policy flag defaulting to automatic confirmation. Automatic is a materially better customer experience and is what booking platforms have trained people to expect. Some owners will insist on approving every booking, particularly early on when they do not yet trust the system, and a flag costs almost nothing. Note that PENDING appointments must still hold the slot, otherwise approval is meaningless. |
-| OPD-09 | Is slot granularity fixed platform-wide at 15 minutes, or configurable per tenant? | Per-tenant field on BookingPolicy defaulting to 15 minutes. A parlour whose shortest service is 45 minutes may prefer 30 minute granularity for a cleaner grid. The field costs one column now and cannot be retrofitted without recomputing every cached availability response later. |
-| OPD-10 | When a customer selects "any available staff", is assignment made at booking time or deferred for owner allocation? | Assignment at booking time per BR-14. Deferred assignment sounds flexible but creates a category of problems: unassigned appointments do not participate in overlap detection so FR-027 cannot be guaranteed; the customer cannot be told who will serve them; and the owner acquires a daily allocation task they did not ask for. Assign immediately, permit manual reassignment afterwards. |
+| OPD-08 | Does an online booking become CONFIRMED automatically, or enter PENDING awaiting staff approval? | Per-tenant flag `requiresApproval` on BookingPolicy, defaulting to `false`. PENDING appointments hold their slot and expire automatically per FR-061. |
+| OPD-09 | Is slot granularity fixed platform-wide at 15 minutes, or configurable per tenant? | Per-tenant field `slotGranularityMinutes` on BookingPolicy, defaulting to 15, constrained to {5, 10, 15, 20, 30, 60}. |
+| OPD-10 | When a customer selects "any available staff", is assignment made at booking time or deferred for owner allocation? | Assignment at booking time, deterministically, per BR-14. `staffProfileId` on Appointment remains not null. |
+
+### 11.1 Artifacts added by these resolutions
+
+Working through OPD-08 exposed a genuine gap in the specification. A PENDING
+appointment that holds its slot must eventually stop holding it, and nothing
+in the requirements said when. See section 7.1.1.
+
+| ID | Artifact |
+|---|---|
+| FR-061 | The system shall automatically transition a PENDING appointment to CANCELLED if it has not been approved or declined within a configurable expiry period. |
+| BR-21 | A PENDING appointment shall hold its slot until it is approved, declined or expired. |
+| UC-36 | Expire unapproved pending appointment. Initiated by ACT-06, Scheduler. |
+| BR-14 | Amended. Load balancing counts active appointments, meaning PENDING or CONFIRMED, rather than CONFIRMED alone. |
+| BookingPolicy | Entity specified in full at section 6.3. |
 
 ---
 
@@ -800,7 +869,38 @@ this phase.
 
 | Criterion | Status |
 |---|---|
-| OPD-08 to OPD-10 resolved and recorded | Outstanding |
-| Domain model in section 4 reviewed and accepted | Outstanding |
-| Use case specifications exist for all thirty-five use cases | Outstanding. UC-24 and UC-25 complete |
+| OPD-08 to OPD-10 resolved and recorded | Met |
+| Domain model in section 4 reviewed and accepted | Met |
+| Use case specifications exist for all thirty-six use cases | Outstanding. UC-24 and UC-25 complete |
 | All Phase 2 artifacts committed to `docs/02-analysis/` | Met on commit of this document |
+
+### 12.1 Outstanding work
+
+Thirty-four use case specifications remain, following the template in section
+3.1. UC-24 and UC-25 are complete and are the two hardest; the remainder are
+more mechanical.
+
+This work is not busywork and should not be skipped on the assumption that
+the artifacts matter more than the exercise. The opposite is true. Writing
+preconditions and alternate flows is the activity that surfaces requirements
+not yet considered. OPD-08 is the evidence: the pending expiry gap was found
+by working through the consequences of a decision in writing, not by
+implementing anything.
+
+UC-36 should be specified first, since it is new and its exception flows are
+not yet thought through. Two questions it must answer:
+
+1. Is the customer notified when their pending request expires? Silent expiry
+   would be poor treatment of someone who has been waiting.
+2. Does the expiry clock run from appointment creation, or is it bounded by
+   the appointment start time? A request made three weeks in advance with a
+   24 hour expiry behaves very differently from one made for tomorrow.
+
+Neither question changes the schema, so both can be resolved during Phase 3
+without blocking design work.
+
+### 12.2 Phase status
+
+Phase 2 is substantively complete. Design decisions are settled, the domain
+model is stable, and the schema consequences are fully enumerated. Phase 3 is
+not blocked by the outstanding specifications.
