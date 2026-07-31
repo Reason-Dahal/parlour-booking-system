@@ -1,0 +1,133 @@
+# ---------------------------------------------------------------------------
+# Secrets and environment
+#
+# Anything matching these patterns must never enter version control. A secret
+# committed once remains in Git history permanently, even if a later commit
+# deletes the file. Recovering from that requires rewriting history, which is
+# disruptive and easily done incorrectly.
+#
+# Commit .env.example instead, containing every required key with placeholder
+# values, so that a new environment can be configured without guesswork.
+# ---------------------------------------------------------------------------
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.keystore
+*.jks
+secrets/
+credentials.json
+service-account*.json
+
+
+# ---------------------------------------------------------------------------
+# Node
+# ---------------------------------------------------------------------------
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.pnpm-store/
+.npm/
+.yarn/
+
+
+# ---------------------------------------------------------------------------
+# Build output
+# ---------------------------------------------------------------------------
+dist/
+build/
+out/
+*.tsbuildinfo
+
+
+# ---------------------------------------------------------------------------
+# Next.js
+# ---------------------------------------------------------------------------
+.next/
+.vercel/
+next-env.d.ts
+
+
+# ---------------------------------------------------------------------------
+# Prisma
+#
+# The schema and migration files ARE committed. They are the source of truth
+# for the database structure and every environment must apply the identical
+# migration sequence. Only generated client output is ignored.
+# ---------------------------------------------------------------------------
+prisma/generated/
+prisma/*.db
+prisma/*.db-journal
+
+
+# ---------------------------------------------------------------------------
+# Flutter and Dart
+# ---------------------------------------------------------------------------
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+**/doc/api/
+*.iml
+
+# Android
+**/android/**/gradle-wrapper.jar
+**/android/.gradle
+**/android/captures/
+**/android/local.properties
+**/android/key.properties
+*.apk
+*.aab
+
+# iOS
+**/ios/Flutter/Flutter.framework
+**/ios/Flutter/Flutter.podspec
+**/ios/Flutter/Generated.xcconfig
+**/ios/Pods/
+**/ios/.symlinks/
+
+
+# ---------------------------------------------------------------------------
+# Testing and coverage
+# ---------------------------------------------------------------------------
+coverage/
+.nyc_output/
+*.lcov
+playwright-report/
+test-results/
+
+
+# ---------------------------------------------------------------------------
+# Editors and tooling caches
+# ---------------------------------------------------------------------------
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+.eslintcache
+.turbo/
+
+
+# ---------------------------------------------------------------------------
+# Operating system
+# ---------------------------------------------------------------------------
+.DS_Store
+Thumbs.db
+desktop.ini
+
+
+# ---------------------------------------------------------------------------
+# Local uploads and temporary files
+# ---------------------------------------------------------------------------
+uploads/
+tmp/
+temp/
+*.log
