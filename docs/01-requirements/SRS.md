@@ -653,17 +653,23 @@ business that compounds and one that saturates.
 Assumptions are statements believed true but not yet verified. Each
 represents a risk if incorrect.
 
-| ID | Assumption |
-|---|---|
-| ASM-01 | Each service is delivered by exactly one Staff member. Services requiring two or more simultaneous staff are not supported in Release 1.0. |
-| ASM-02 | Physical resources such as chairs, wash basins and treatment rooms are not independently constrained. Staff availability is treated as the sole limiting factor. |
-| ASM-03 | Customers possess an email address and reliable internet access. |
-| ASM-04 | All services are performed at the parlour premises. |
-| ASM-05 | Payment is settled in person at the time of service. |
+| ID | Assumption | Status |
+|---|---|---|
+| ASM-01 | Each service is delivered by exactly one Staff member. Services requiring two or more simultaneous staff are not supported in Release 1.0. | Accepted |
+| ASM-02 | Physical resources such as chairs, wash basins and treatment rooms are not independently constrained. Staff availability is treated as the sole limiting factor. | Accepted on developer judgement |
+| ASM-03 | Customers possess an email address and reliable internet access. | Accepted |
+| ASM-04 | All services are performed at the parlour premises. | Accepted |
+| ASM-05 | Payment is settled in person at the time of service. | Accepted |
 
-**ASM-02 warrants scrutiny.** If a parlour has four beauticians but two wash
-stations, the model is incorrect and slot computation will overbook the
-physical space. This must be confirmed with a practising parlour operator.
+**ASM-02 is accepted on developer judgement and has not been externally
+validated.** Were it incorrect, meaning a parlour has more staff than
+treatment stations, slot computation would overbook the physical space. The
+correction would require a Resource entity and an additional dimension in the
+availability algorithm.
+
+The assumption is recorded as accepted rather than validated so that the
+distinction remains visible. Should overbooking be reported after launch,
+this entry identifies the assumption to re-examine first.
 
 ---
 
@@ -676,13 +682,12 @@ physical space. This must be confirmed with a practising parlour operator.
 | RSK-03 | Timezone defects arising from the 45 minute offset | Medium | High | UTC storage discipline per NFR-011. First availability test cases written against Asia/Kathmandu specifically, not against UTC or a whole-hour offset |
 | RSK-04 | Scope creep into excluded features | High | High | Formal exclusion list in section 5.2. Any addition requires documented scope change |
 | RSK-05 | Learning curve on three concurrent technologies stalls delivery | Medium | Medium | Increment 1 deliberately trivial in business logic, used to establish toolchain fluency |
-| RSK-06 | Requirements diverge from real operator needs | High | Medium | Validate this specification against at least one practising parlour owner |
+| RSK-06 | Requirements diverge from real operator needs | High | Medium | **ACCEPTED, not mitigated.** Specification developed without external operator validation. ASM-02 in particular is accepted on developer judgement. Accepted knowingly to avoid delaying implementation; revisit if defects suggest a modelling error |
 | RSK-07 | Project abandoned before completion | High | Medium | One-week increments, each ending in deployed working software |
 | RSK-08 | Cross-tenant data leakage through a missing query filter | Critical | Medium | Five-layer enforcement per section 8.2 |
 | RSK-09 | Tenant customisation requests erode the fixed-layout constraint, converting the product into agency work | High | High | Escalation ladder per section 9.7. Custom frontend work declined at any price |
 | RSK-10 | Website component expands into a general page builder | High | Medium | Structured content only. No markup editing |
 | RSK-11 | Section content stored as JSON diverges from component expectations, producing render failures | Medium | Medium | Schema validation per section type, enforced on write and on read. Graceful section-level failure per NFR-028 |
-
 ---
 
 ## 13. Phase Exit Criteria
