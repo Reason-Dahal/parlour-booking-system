@@ -1,0 +1,120 @@
+// ---------------------------------------------------------------------------
+// Prisma schema for the Parlour Booking System.
+//
+// Models are introduced incrementally. This first migration establishes the
+// tenancy and identity core, per the data model in docs/03-design.
+// ---------------------------------------------------------------------------
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+
+enum Role {
+  CUSTOMER
+  STAFF
+  OWNER
+  PLATFORM_ADMIN
+}
+
+enum TenantStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+
+// ---------------------------------------------------------------------------
+// Tenant
+//
+// The isolation boundary of the entire platform. Almost every other entity
+// carries a tenantId referencing this model, per SRS section 8.2 layer 1.
+// ---------------------------------------------------------------------------
+
+model Tenant {
+  id     String       @id @default(cuid())
+  status TenantStatus @default(ACTIVE)
+
+  name String
+  slug String @unique
+
+  /*
+   * IANA timezone identifier, for example "Asia/Kathmandu".
+   *
+   * Stored explicitly rather than assumed, per NFR-011. Nepal Standard Time
+   * is UTC+05:45, and the forty-five minute offset breaks any code that
+   * assumes whole-hour timezones.
+   */
+  timezone String @default("Asia/Kathmandu")
+
+  email       String
+  phone       String
+  addressLine String
+  city        String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  memberships Membership[]
+
+  @@index([status])
+  @@map("tenants")
+}
+
+
+// ---------------------------------------------------------------------------
+// User
+//
+// Global identity. One record per person across the entire platform.
+//
+// Deliberately NOT tenant-scoped, per OPD-01 and FR-051. A customer registers
+// once and may book at any parlour.
+// ---------------------------------------------------------------------------
+
+model User {
+  id String @id @default(cuid())
+
+  email        String  @unique
+  phone        String  @unique
+  passwordHash String
+  fullName     String
+  isActive     Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  membership Membership?
+
+  @@map("users")
+}
+
+
+// ---------------------------------------------------------------------------
+// Membership
+//
+// Links a User to a Tenant as staff or owner.
+//
+// userId is unique, enforcing OPD-04 at the database level: a person belongs
+// to exactly one tenant.
+// ---------------------------------------------------------------------------
+
+model Membership {
+  id String @id @default(cuid())
+
+  userId   String @unique
+  tenantId String
+
+  role Role
+
+  createdAt DateTime @default(now())
+
+  user   User   @relation(fields: [userId], references: [id])
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId])
+  @@map("memberships")
+}
